@@ -21,6 +21,8 @@ impl ClientHello {
             extensions: [0;8] //extension
         }
     }
+}
+
     // Variable-length vectors are defined by specifying a subrange of legal
     // lengths, inclusively, using the notation <floor..ceiling>.  When
     // these are encoded, the actual length precedes the vector's contents
@@ -28,26 +30,27 @@ impl ClientHello {
     // consuming as many bytes as required to hold the vector's specified
     // maximum (ceiling) length.  A variable-length vector with an actual
     // length field of zero is referred to as an empty vector.
-    pub fn to_vec(&self) -> Vec<u8> {
+impl From<ClientHello> for Vec<u8> {
+    fn from(hello: ClientHello) -> Self {
         let mut vec: Vec<u8> = Vec::new();
         
-        self.protocol_version.iter().for_each(|b| vec.push(*b));
-        self.random.iter().for_each(|b| vec.push(*b));
+        hello.protocol_version.iter().for_each(|b| vec.push(*b));
+        hello.random.iter().for_each(|b| vec.push(*b));
         //specify 0 length session_id
         vec.push(0x00);
         vec.push(0x00);
-        self.legacy_session_id.iter().for_each(|b| vec.push(*b));
+        hello.legacy_session_id.iter().for_each(|b| vec.push(*b));
         //specify a cipher suite. Must be at least 2 bytes
         vec.push(0x00);
         vec.push(0x02);
-        self.cipher_suites.iter().for_each(|b| vec.push(*b));
+        hello.cipher_suites.iter().for_each(|b| vec.push(*b));
         vec.push(0x00);
         vec.push(0x01);
-        self.legacy_compression_methods.iter().for_each(|b| vec.push(*b));
+        hello.legacy_compression_methods.iter().for_each(|b| vec.push(*b));
         //specify minimum length extensions
         vec.push(0x00);
         vec.push(0x08);
-        self.extensions.iter().for_each(|b| vec.push(*b));
+        hello.extensions.iter().for_each(|b| vec.push(*b));
         vec
     }
 }
@@ -59,7 +62,7 @@ fn main() {
 
 
     let hello = ClientHello::new();
-    let hello_buff = hello.to_vec();
+    let hello_buff: Vec<u8> = Vec::from(hello);
 
     sock.write(&hello_buff).unwrap();
 
