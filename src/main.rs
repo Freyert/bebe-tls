@@ -101,6 +101,8 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    use std::{sync::Arc};
+
     use crate::ClientHello;
 
     #[test]
@@ -126,5 +128,52 @@ mod tests {
         assert_eq!(cipher_suites, iter_bytes[66..=67]);
         assert_eq!(legacy_compression_methods, iter_bytes[68..=68]);
         assert_eq!(extensions, iter_bytes[69..])
+    }
+
+    #[test]
+    fn client_hello_against_rustls() {
+        //Build the rustls server configuration
+        use rustls_pemfile::{Item, read_one};
+        use std::io::{BufReader};
+
+
+        //A script for generating the test keys lives in "./test",  as well as the cert/key. This filters for just the *.pem files.
+        let files: Vec<BufReader<std::fs::File>> = std::fs::read_dir("./test").unwrap().into_iter().map(|dir_entry| dir_entry.as_ref().unwrap().path())
+        .filter(|path| path.extension().unwrap() == "pem")
+        .map(|file| {
+            BufReader::new(
+                std::fs::File::open(&file).expect(format!("could not open {:?}", &file.as_os_str()).as_str())
+            )
+        }).collect();
+
+        println!("{}", files.len());
+
+        //Next we parse the *.pem files to get the cert and key.
+        let mut server_cert: Result<Vec<rustls::Certificate>, &'static str> = Err("certificate missing");
+        let mut server_key: Result<rustls::PrivateKey, &'static str> = Err("server key missing");
+        for mut file in files {
+            println!("looping");
+            match read_one(&mut file).unwrap() {
+                Some(Item::X509Certificate(cert)) => server_cert = Ok(vec!(rustls::Certificate(cert))),
+                Some(Item::RSAKey(key)) => server_key = Ok(rustls::PrivateKey(key)),
+                Some(Item::PKCS8Key(key)) => server_key = Ok(rustls::PrivateKey(key)),
+                _ => ()
+            };
+        }
+
+        //Configure the TLS server
+        let server_config = rustls::ServerConfig::builder().with_safe_defaults();
+        let server = server_config.with_no_client_auth().with_single_cert(server_cert.unwrap(), server_key.unwrap()).unwrap();
+        let mut server_connection = rustls::ServerConnection::new(Arc::new(server)).unwrap();
+
+
+        //Here we interact with the server_connection manually.
+        //This is great because we don't have to actually open a socket or send packets over the network.
+        let mut hello = ClientHello::new().into_iter();
+        //First read the TLS packet
+        server_connection.read_tls(&mut hello).unwrap();
+        //Then process the packet. Will panic if the packet is bad!
+        //Great for debugging the client.
+        server_connection.process_new_packets().unwrap();
     }
 }
